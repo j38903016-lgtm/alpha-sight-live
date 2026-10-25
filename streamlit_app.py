@@ -43,9 +43,10 @@ def figure(title, rows, series, y_title='收益率（%）'):
             fig.add_trace(go.Scatter(x=[r['date'] for r in tail],y=[r[field] for r in tail],name=name+' · API 暂估',
                                     mode='lines+markers',line=dict(color=color,width=2.5,dash='dot'),marker=dict(size=5),
                                     hovertemplate='%{x}<br>%{y:.2f}%<extra>API 暂估</extra>'))
+    ticks = sorted(set(round(i*(len(rows)-1)/min(4,max(1,len(rows)-1))) for i in range(min(5,len(rows)))))
     fig.update_layout(title=title,height=340,margin=dict(l=10,r=10,t=50,b=20),paper_bgcolor='rgba(0,0,0,0)',
                       plot_bgcolor='rgba(0,0,0,0)',font=dict(color='#CBD5E3'),legend=dict(orientation='h',y=1.12),
-                      xaxis=dict(type='category',nticks=6,showgrid=False),yaxis=dict(title=y_title,gridcolor='#273242',zerolinecolor='#516079'),hovermode='x unified')
+                      xaxis=dict(type='category',tickmode='array',tickvals=[rows[i]['date'] for i in ticks],ticktext=[rows[i]['date'] for i in ticks],showgrid=False),yaxis=dict(title=y_title,gridcolor='#273242',zerolinecolor='#516079'),hovermode='x unified')
     return fig
 
 
@@ -58,6 +59,8 @@ def dashboard():
         return
     first = date.fromisoformat(payload['startDate'])
     last = date.fromisoformat(payload['points'][-1]['date'])
+    last_is_estimated = payload['points'][-1].get('estimated',False)
+    st.caption(f"最新可用策略数据：{last.isoformat()}（{'API 暂估，勾选下方开关即可纳入' if last_is_estimated else '官方确认'}）· 官方确认至 {payload.get('officialThrough','—')}")
     controls = st.columns([2,2,2,2])
     full_period = controls[0].checkbox('全部正式实盘阶段', value=True)
     start = controls[1].date_input('起始交易日',value=first,min_value=first,max_value=last,disabled=full_period)
