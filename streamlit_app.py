@@ -60,7 +60,10 @@ def dashboard():
     first = date.fromisoformat(payload['startDate'])
     last = date.fromisoformat(payload['points'][-1]['date'])
     last_is_estimated = payload['points'][-1].get('estimated',False)
-    st.caption(f"Latest strategy data: {last.isoformat()} ({'API estimate; enable the option below to include it' if last_is_estimated else 'Confirmed'}) · Official through {payload.get('officialThrough','—')}")
+    st.caption(f"Latest strategy data: {last.isoformat()} ({'Live P&L estimate; not official TWR' if last_is_estimated else 'Confirmed'}) · Official through {payload.get('officialThrough','—')}")
+    if payload.get('lastUpdatedAt'):
+        updated = pd.Timestamp(payload['lastUpdatedAt']).tz_convert('America/New_York').strftime('%Y-%m-%d %H:%M:%S ET')
+        st.caption(f"Last data update: {updated}")
     controls = st.columns([2,2,2,2])
     full_period = controls[0].checkbox('Full live history', value=True)
     start = controls[1].date_input('Start date',value=first,format='YYYY-MM-DD',min_value=first,max_value=last,disabled=full_period)
@@ -79,10 +82,10 @@ def dashboard():
     stats = result['stats']
     st.caption(f"Period: {result['from']} → {result['through']} · {result['observations']} daily returns · Opening baseline: {result['baseline']} close · Earlier small-capital activity excluded")
     cards = st.columns(4)
-    for column,label,value in zip(cards,['Strategy return · TWR','Nasdaq 100','Excess return · pp','Strategy max drawdown'],[stats['cumulative'],stats['benchmark'],stats['excess'],stats['maxDrawdown']]):
+    for column,label,value in zip(cards,['Strategy return · TWR / estimate','Nasdaq 100','Excess return · pp','Strategy max drawdown'],[stats['cumulative'],stats['benchmark'],stats['excess'],stats['maxDrawdown']]):
         column.metric(label,percent(value, ' pp' if label.endswith('pp') else '%'))
     st.plotly_chart(figure('Cumulative Returns',result['curve'],[('strategy','Strategy TWR',LIME),('ndx','Nasdaq 100',BLUE)]),use_container_width=True)
-    st.caption(f"Official TWR confirmed through {payload.get('officialThrough','—')}. Strategy and NDX use the same opening baseline. {result['estimatedDays']} sessions use API estimates reconciled against NAV and daily P&L; dashed lines can be hidden.")
+    st.caption(f"Official TWR confirmed through {payload.get('officialThrough','—')}. Strategy and NDX use the same opening baseline. {result['estimatedDays']} sessions use broker daily P&L / prior confirmed NAV estimates, pending official TWR. Exact intraday cash-flow timing is unverified. Dashed estimates can be hidden.")
     a,b = st.columns(2)
     with a:
         st.plotly_chart(figure('Cumulative Excess Return',result['curve'],[('excess','Strategy − NDX',TEAL)],'Percentage points'),use_container_width=True)
