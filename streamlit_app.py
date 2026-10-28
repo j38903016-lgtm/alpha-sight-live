@@ -66,7 +66,7 @@ def dashboard():
         updated = received.strftime('%Y-%m-%d %H:%M:%S ET')
         st.caption(f"Latest data received: {updated} · This is not the return-curve date")
         if received.date() > last and received.weekday() < 5:
-            st.info(f"账户数据接收时间：{updated}；收益曲线截至 {last.isoformat()}。"
+            st.info(f"数据接收时间：{updated}；收益曲线截至 {last.isoformat()}。"
                     "后续交易日的已核验收益尚未齐备，等待 IBKR Flex 日报自动补齐。"
                     "刷新页面不会生成缺失的日收益；深夜账户快照不能替代正式收盘收益。")
     controls = st.columns([2,2,2,2])
