@@ -25,7 +25,8 @@ def calculate(payload, start=None, through=None, include_estimated=True, risk_fr
         peak_a, peak_b = max(peak_a, a), max(peak_b, b)
         curve.append({'date':row['date'], 'strategy':(a-1)*100, 'ndx':(b-1)*100,
                       'excess':(a-b)*100, 'drawdownStrategy':(a/peak_a-1)*100,
-                      'drawdownNdx':(b/peak_b-1)*100, 'estimated':bool(row.get('estimated'))})
+                      'drawdownNdx':(b/peak_b-1)*100, 'estimated':bool(row.get('estimated')),
+                      'estimateSession':row.get('estimateSession'), 'observedAt':row.get('observedAt')})
     daily = [{'date':row['date'], 'strategy':row['strategyIndex']/prior['strategyIndex']-1,
               'ndx':row['benchmarkIndex']/prior['benchmarkIndex']-1,
               'estimated':bool(row.get('estimated'))} for prior, row in zip(rows, rows[1:])]

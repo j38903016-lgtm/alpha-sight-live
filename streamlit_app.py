@@ -40,9 +40,9 @@ def figure(title, rows, series, y_title='Return (%)'):
                                     mode='lines',line=dict(color=color,width=2.5),hovertemplate='%{x}<br>%{y:.2f}%<extra>'+name+'</extra>'))
         if first_estimate < len(rows):
             tail = rows[max(0,first_estimate-1):]
-            fig.add_trace(go.Scatter(x=[r['date'] for r in tail],y=[r[field] for r in tail],name=name+' · API estimate',
+            fig.add_trace(go.Scatter(x=[r['date'] for r in tail],y=[r[field] for r in tail],name=name+' · Estimate',
                                     mode='lines+markers',line=dict(color=color,width=2.5,dash='dot'),marker=dict(size=5),
-                                    hovertemplate='%{x}<br>%{y:.2f}%<extra>API estimate</extra>'))
+                                    hovertemplate='%{x}<br>%{y:.2f}%<extra>Provisional estimate</extra>'))
     ticks = sorted(set(round(i*(len(rows)-1)/min(4,max(1,len(rows)-1))) for i in range(min(5,len(rows)))))
     fig.update_layout(title=title,height=340,margin=dict(l=10,r=10,t=50,b=20),paper_bgcolor='rgba(0,0,0,0)',
                       plot_bgcolor='rgba(0,0,0,0)',font=dict(color='#CBD5E3'),legend=dict(orientation='h',y=1.12),
@@ -60,7 +60,13 @@ def dashboard():
     first = date.fromisoformat(payload['startDate'])
     last = date.fromisoformat(payload['points'][-1]['date'])
     last_is_estimated = payload['points'][-1].get('estimated',False)
-    st.caption(f"Latest strategy data: {last.isoformat()} ({'Live P&L estimate; not official TWR' if last_is_estimated else 'Confirmed'}) · Official through {payload.get('officialThrough','—')}")
+    after_hours = payload['points'][-1].get('estimateSession') == 'after_hours'
+    quality = 'After-hours estimate; not official TWR' if after_hours else ('Live P&L estimate; not official TWR' if last_is_estimated else 'Confirmed')
+    st.caption(f"Latest strategy data: {last.isoformat()} ({quality}) · Official through {payload.get('officialThrough','—')}")
+    if after_hours:
+        observed = pd.Timestamp(payload['points'][-1]['observedAt']).tz_convert('America/New_York').strftime('%Y-%m-%d %H:%M:%S ET')
+        st.info(f"{last.isoformat()} 虚线为截至 {observed} 的盘后账户盈亏估算，基准采用当日已完成的 NDX 日K。"
+                "它不是16:00正式收盘TWR，出入金时点尚未核验；IBKR Flex 日报到达后自动替换。")
     if payload.get('lastUpdatedAt'):
         received = pd.Timestamp(payload['lastUpdatedAt']).tz_convert('America/New_York')
         updated = received.strftime('%Y-%m-%d %H:%M:%S ET')
