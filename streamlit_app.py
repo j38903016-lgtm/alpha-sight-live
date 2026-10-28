@@ -93,8 +93,11 @@ def dashboard():
         return
     stats = result['stats']
     st.caption(f"Period: {result['from']} → {result['through']} · {result['observations']} daily returns · Opening baseline: {result['baseline']} close · Earlier small-capital activity excluded")
+    latest_day = result['daily'][-1]
+    day_quality = '估算' if latest_day['estimated'] else '正式确认'
+    st.caption(f"最新交易日 {latest_day['date']}（{day_quality}）：策略 {percent(latest_day['strategy']*100)} · NDX {percent(latest_day['ndx']*100)}。下方首项为所选区间累计收益。")
     cards = st.columns(4)
-    for column,label,value in zip(cards,['Strategy return · TWR / estimate','Nasdaq 100','Excess return · pp','Strategy max drawdown'],[stats['cumulative'],stats['benchmark'],stats['excess'],stats['maxDrawdown']]):
+    for column,label,value in zip(cards,['Cumulative strategy return','Cumulative Nasdaq 100','Excess return · pp','Strategy max drawdown'],[stats['cumulative'],stats['benchmark'],stats['excess'],stats['maxDrawdown']]):
         column.metric(label,percent(value, ' pp' if label.endswith('pp') else '%'))
     st.plotly_chart(figure('Cumulative Returns',result['curve'],[('strategy','Strategy TWR',LIME),('ndx','Nasdaq 100',BLUE)]),use_container_width=True)
     st.caption(f"Official TWR confirmed through {payload.get('officialThrough','—')}. Strategy and NDX use the same opening baseline. {result['estimatedDays']} sessions use broker daily P&L / prior confirmed NAV estimates, pending official TWR. Exact intraday cash-flow timing is unverified. Dashed estimates can be hidden.")
