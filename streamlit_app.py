@@ -33,7 +33,8 @@ def percent(value, suffix='%'):
 def figure(title, rows, series, y_title='Return (%)'):
     fig = go.Figure()
     for field, name, color in series:
-        first_estimate = next((i for i,r in enumerate(rows) if r.get('estimated')), len(rows))
+        first_estimate = next((i for i,r in enumerate(rows) if r.get('estimated') and
+                               (field not in ('ndx','drawdownNdx') or r.get('estimateSession') != 'after_hours')), len(rows))
         solid = rows[:first_estimate]
         if solid:
             fig.add_trace(go.Scatter(x=[r['date'] for r in solid],y=[r[field] for r in solid],name=name,
