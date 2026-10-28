@@ -17,4 +17,4 @@ streamlit run streamlit_app.py
 
 ## Deploy
 
-Deploy `streamlit_app.py` from the `main` branch through Streamlit Community Cloud. No secrets are required; the app reads a public, allowlisted performance endpoint. The existing local IB Gateway collector continues updating the protected backend independently of this public view.
+Deploy `streamlit_app.py` from the `main` branch through Streamlit Community Cloud. No secrets are required; the app reads a public, allowlisted performance endpoint. The local collector now reads the existing TradingView IBKR account panel; official daily performance/cash/execution history uses IBKR Flex HTTPS. TWS and Gateway are not required. TradingView NDX reference prices may be delayed; completed daily bars prefer the official MCP cache with an explicitly labelled Yahoo backup for missing dates. Account uploads stop on stale/incomplete reads and resume after fresh complete reads. Public data continues to exclude private account details.

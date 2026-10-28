@@ -62,8 +62,13 @@ def dashboard():
     last_is_estimated = payload['points'][-1].get('estimated',False)
     st.caption(f"Latest strategy data: {last.isoformat()} ({'Live P&L estimate; not official TWR' if last_is_estimated else 'Confirmed'}) · Official through {payload.get('officialThrough','—')}")
     if payload.get('lastUpdatedAt'):
-        updated = pd.Timestamp(payload['lastUpdatedAt']).tz_convert('America/New_York').strftime('%Y-%m-%d %H:%M:%S ET')
-        st.caption(f"Last data update: {updated}")
+        received = pd.Timestamp(payload['lastUpdatedAt']).tz_convert('America/New_York')
+        updated = received.strftime('%Y-%m-%d %H:%M:%S ET')
+        st.caption(f"Latest data received: {updated} · This is not the return-curve date")
+        if received.date() > last and received.weekday() < 5:
+            st.info(f"账户数据接收时间：{updated}；收益曲线截至 {last.isoformat()}。"
+                    "后续交易日的已核验收益尚未齐备，等待 IBKR Flex 日报自动补齐。"
+                    "刷新页面不会生成缺失的日收益；深夜账户快照不能替代正式收盘收益。")
     controls = st.columns([2,2,2,2])
     full_period = controls[0].checkbox('Full live history', value=True)
     start = controls[1].date_input('Start date',value=first,format='YYYY-MM-DD',min_value=first,max_value=last,disabled=full_period)
@@ -120,7 +125,7 @@ def dashboard():
         st.dataframe(pd.DataFrame(monthly),hide_index=True,use_container_width=True)
         st.caption('Selected live period only; first and last months may be partial.')
         st.metric('Days outperforming NDX',percent(stats['outperformDays']))
-    st.caption('Verified IBKR TWR + same-day NDX · Public performance refreshes every minute · Account details remain private')
+    st.caption('TradingView account snapshots + IBKR Flex official daily TWR · Public performance refreshes every minute · Account details remain private')
 
 
 dashboard()
