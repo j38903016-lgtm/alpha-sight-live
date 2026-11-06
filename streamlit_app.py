@@ -66,8 +66,10 @@ def dashboard():
     st.caption(f"Latest strategy data: {last.isoformat()} ({quality}) · Official through {payload.get('officialThrough','—')}")
     if after_hours:
         observed = pd.Timestamp(payload['points'][-1]['observedAt']).tz_convert('America/New_York').strftime('%Y-%m-%d %H:%M:%S ET')
-        st.info(f"{last.isoformat()} 虚线为截至 {observed} 的盘后账户盈亏估算，基准采用当日已完成的 NDX 日K。"
-                "它不是16:00正式收盘TWR，出入金时点尚未核验；IBKR Flex 日报到达后自动替换。")
+        method = ('净值变化扣除已知出入金' if payload['points'][-1].get('estimateMethod') == 'nav_change'
+                  else '账户盈亏')
+        st.info(f"{last.isoformat()} 虚线为截至 {observed} 的盘后{method}估算，基准采用当日已完成的 NDX 日K。"
+                "晚间重置后的 Daily PnL 不作为当天收益。此值不是16:00正式收盘TWR，出入金时点尚未核验；IBKR Flex 日报到达后自动替换。")
     if payload.get('lastUpdatedAt'):
         received = pd.Timestamp(payload['lastUpdatedAt']).tz_convert('America/New_York')
         updated = received.strftime('%Y-%m-%d %H:%M:%S ET')
@@ -100,7 +102,7 @@ def dashboard():
     for column,label,value in zip(cards,['Cumulative strategy return','Cumulative Nasdaq 100','Excess return · pp','Strategy max drawdown'],[stats['cumulative'],stats['benchmark'],stats['excess'],stats['maxDrawdown']]):
         column.metric(label,percent(value, ' pp' if label.endswith('pp') else '%'))
     st.plotly_chart(figure('Cumulative Returns',result['curve'],[('strategy','Strategy TWR',LIME),('ndx','Nasdaq 100',BLUE)]),use_container_width=True)
-    st.caption(f"Official TWR confirmed through {payload.get('officialThrough','—')}. Strategy and NDX use the same opening baseline. {result['estimatedDays']} sessions use broker daily P&L / prior confirmed NAV estimates, pending official TWR. Exact intraday cash-flow timing is unverified. Dashed estimates can be hidden.")
+    st.caption(f"Official TWR confirmed through {payload.get('officialThrough','—')}. Strategy and NDX use the same opening baseline. {result['estimatedDays']} sessions are provisional: intraday broker P&L; after hours NAV change minus known external flows, divided by prior confirmed NAV. Exact cash-flow timing is unverified. Dashed estimates can be hidden.")
     a,b = st.columns(2)
     with a:
         st.plotly_chart(figure('Cumulative Excess Return',result['curve'],[('excess','Strategy − NDX',TEAL)],'Percentage points'),use_container_width=True)
