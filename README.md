@@ -1,11 +1,12 @@
 # Alpha Sight — Public Strategy Performance
 
-Streamlit dashboard for normalized live-strategy performance versus Nasdaq 100.
+Streamlit dashboard for normalized live-strategy performance versus Nasdaq 100 (NDX) and S&P 500 (SPX).
 
 - Formal trading starts on **2026-10-13**.
 - The **2026-10-12 close** is the opening baseline, so the first formal trading day's return is included.
 - Earlier small-capital trading is excluded from every return and risk metric.
 - Historical strategy performance uses official IBKR TWR. Broker API estimates are explicitly marked and can be hidden.
+- SPX uses Yahoo Finance's S&P 500 price index (`^GSPC`). It shares the selected opening date and refreshes every minute with the dashboard. The latest quote shows its source timestamp and may be delayed. Intraday SPX values enter the comparison only within five minutes of the same session's strategy estimate. Missing benchmark values appear as gaps.
 - Public data contains only dates, normalized strategy/index values, and source-quality flags. No account balances, holdings, executions, personal identifiers, or access credentials are published.
 
 ## Run locally

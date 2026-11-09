@@ -5,14 +5,15 @@ import requests
 import streamlit as st
 
 from performance import calculate
+from spx import add_spx_comparison, load_spx
 
 PUBLIC_DATA_URL = 'https://alpha-sight-live-1023.j38903016.chatgpt.site/api/public-performance'
-LIME, BLUE, TEAL = '#C8FF70', '#7DACF7', '#43D9C4'
+LIME, BLUE, TEAL, AMBER = '#C8FF70', '#7DACF7', '#43D9C4', '#FFB86B'
 
-st.set_page_config(page_title='Alpha Sight · Live Strategy vs Nasdaq 100', page_icon='📈', layout='wide')
+st.set_page_config(page_title='Alpha Sight · Strategy vs NDX and SPX', page_icon='📈', layout='wide')
 st.markdown('<style>.block-container{max-width:1400px;padding-top:2rem}div[data-testid="stMetric"]{background:#17212D;padding:18px;border:1px solid #2A3544;border-radius:10px}h1{font-size:2rem}div[data-testid="stMetricValue"]{font-size:1.9rem}</style>', unsafe_allow_html=True)
 st.caption('ALPHA SIGHT  /  PUBLIC PERFORMANCE')
-st.title('Live Strategy × Nasdaq 100')
+st.title('Live Strategy × Nasdaq 100 × S&P 500')
 st.caption('Normalized live performance and risk metrics. Account balances, positions, individual executions and access credentials are private.')
 
 
@@ -26,6 +27,9 @@ def load_data():
     return payload
 
 
+cached_spx = st.cache_data(ttl=45, show_spinner=False)(load_spx)
+
+
 def percent(value, suffix='%'):
     return '—' if value is None else f'{value:+.2f}{suffix}'
 
@@ -33,16 +37,20 @@ def percent(value, suffix='%'):
 def figure(title, rows, series, y_title='Return (%)'):
     fig = go.Figure()
     for field, name, color in series:
-        first_estimate = next((i for i,r in enumerate(rows) if r.get('estimated') and
-                               (field not in ('ndx','drawdownNdx') or r.get('estimateSession') != 'after_hours')), len(rows))
+        if not any(r.get(field) is not None for r in rows[1:]):
+            continue
+        first_estimate = next((i for i, r in enumerate(rows) if (
+            r.get('spxEstimated') if field in ('spx', 'drawdownSpx') else
+            r.get('estimated') and (field not in ('ndx', 'drawdownNdx') or r.get('estimateSession') != 'after_hours')
+        )), len(rows))
         solid = rows[:first_estimate]
         if solid:
             fig.add_trace(go.Scatter(x=[r['date'] for r in solid],y=[r[field] for r in solid],name=name,
-                                    mode='lines',line=dict(color=color,width=2.5),hovertemplate='%{x}<br>%{y:.2f}%<extra>'+name+'</extra>'))
+                                    mode='lines',connectgaps=False,line=dict(color=color,width=2.5),hovertemplate='%{x}<br>%{y:.2f}%<extra>'+name+'</extra>'))
         if first_estimate < len(rows):
             tail = rows[max(0,first_estimate-1):]
             fig.add_trace(go.Scatter(x=[r['date'] for r in tail],y=[r[field] for r in tail],name=name+' · Estimate',
-                                    mode='lines+markers',line=dict(color=color,width=2.5,dash='dot'),marker=dict(size=5),
+                                    mode='lines+markers',connectgaps=False,line=dict(color=color,width=2.5,dash='dot'),marker=dict(size=5),
                                     hovertemplate='%{x}<br>%{y:.2f}%<extra>Provisional estimate</extra>'))
     ticks = sorted(set(round(i*(len(rows)-1)/min(4,max(1,len(rows)-1))) for i in range(min(5,len(rows)))))
     fig.update_layout(title=title,height=340,margin=dict(l=10,r=10,t=50,b=20),paper_bgcolor='rgba(0,0,0,0)',
@@ -93,24 +101,34 @@ def dashboard():
     if not result:
         st.info('No matching strategy and index returns are available for this period.')
         return
+    spx = cached_spx(payload['points'][0]['date'])
+    add_spx_comparison(result, spx)
     stats = result['stats']
     st.caption(f"Period: {result['from']} → {result['through']} · {result['observations']} daily returns · Opening baseline: {result['baseline']} close · Earlier small-capital activity excluded")
     latest_day = result['daily'][-1]
     day_quality = '估算' if latest_day['estimated'] else '正式确认'
-    st.caption(f"最新交易日 {latest_day['date']}（{day_quality}）：策略 {percent(latest_day['strategy']*100)} · NDX {percent(latest_day['ndx']*100)}。下方首项为所选区间累计收益。")
-    cards = st.columns(4)
-    for column,label,value in zip(cards,['Cumulative strategy return','Cumulative Nasdaq 100','Excess return · pp','Strategy max drawdown'],[stats['cumulative'],stats['benchmark'],stats['excess'],stats['maxDrawdown']]):
+    spx_daily = latest_day['spx']
+    st.caption(f"最新交易日 {latest_day['date']}（{day_quality}）：策略 {percent(latest_day['strategy']*100)} · NDX {percent(latest_day['ndx']*100)} · SPX {percent(spx_daily*100 if spx_daily is not None else None)}。")
+    if spx and spx['price'] is not None:
+        quote_time = spx['observed'].strftime('%Y-%m-%d %H:%M:%S ET')
+        st.caption(f"SPX {spx['price']:,.2f} ({percent(spx['change'])}) · Quote timestamp {quote_time} · Yahoo Finance · Quote may be delayed")
+    if not spx or result['curve'][-1]['spx'] is None:
+        st.caption('SPX is blank where its opening close or a matching session value is unavailable.')
+    cards = st.columns(5)
+    for column,label,value in zip(cards,['Cumulative strategy return','Cumulative Nasdaq 100','Cumulative S&P 500','Excess vs NDX · pp','Strategy max drawdown'],[stats['cumulative'],stats['benchmark'],result['curve'][-1]['spx'],stats['excess'],stats['maxDrawdown']]):
         column.metric(label,percent(value, ' pp' if label.endswith('pp') else '%'))
-    st.plotly_chart(figure('Cumulative Returns',result['curve'],[('strategy','Strategy TWR',LIME),('ndx','Nasdaq 100',BLUE)]),use_container_width=True)
-    st.caption(f"Official TWR confirmed through {payload.get('officialThrough','—')}. Strategy and NDX use the same opening baseline. {result['estimatedDays']} sessions are provisional: intraday broker P&L; after hours NAV change minus known external flows, divided by prior confirmed NAV. Exact cash-flow timing is unverified. Dashed estimates can be hidden.")
+    st.plotly_chart(figure('Cumulative Returns',result['curve'],[('strategy','Strategy TWR',LIME),('ndx','Nasdaq 100',BLUE),('spx','S&P 500 (SPX)',AMBER)]),use_container_width=True)
+    st.caption(f"Official TWR confirmed through {payload.get('officialThrough','—')}. All series use the same opening date. SPX uses daily closes and pairs an intraday quote with a strategy estimate only when the timestamps are within five minutes. {result['estimatedDays']} strategy sessions are provisional. Dashed estimates can be hidden.")
     a,b = st.columns(2)
     with a:
-        st.plotly_chart(figure('Cumulative Excess Return',result['curve'],[('excess','Strategy − NDX',TEAL)],'Percentage points'),use_container_width=True)
+        st.plotly_chart(figure('Cumulative Excess Return',result['curve'],[('excess','Strategy − NDX',TEAL),('excessSpx','Strategy − SPX',AMBER)],'Percentage points'),use_container_width=True)
     with b:
-        st.plotly_chart(figure('Drawdown Comparison',result['curve'],[('drawdownStrategy','Strategy',LIME),('drawdownNdx','NDX',BLUE)],'Drawdown (%)'),use_container_width=True)
+        st.plotly_chart(figure('Drawdown Comparison',result['curve'],[('drawdownStrategy','Strategy',LIME),('drawdownNdx','NDX',BLUE),('drawdownSpx','SPX',AMBER)],'Drawdown (%)'),use_container_width=True)
     daily = go.Figure()
-    for key,label,color in [('strategy','Strategy',LIME),('ndx','NDX',BLUE)]:
-        daily.add_bar(x=[r['date'] for r in result['daily']],y=[r[key]*100 for r in result['daily']],name=label,marker_color=color,hovertemplate='%{x}<br>%{y:.2f}%<extra>'+label+'</extra>')
+    for key,label,color in [('strategy','Strategy',LIME),('ndx','NDX',BLUE),('spx','SPX',AMBER)]:
+        values = [r[key]*100 if r[key] is not None else None for r in result['daily']]
+        if any(value is not None for value in values):
+            daily.add_bar(x=[r['date'] for r in result['daily']],y=values,name=label,marker_color=color,hovertemplate='%{x}<br>%{y:.2f}%<extra>'+label+'</extra>')
     daily.update_layout(title='Daily Return Comparison',barmode='group',height=300,xaxis=dict(type='category'),yaxis_title='Daily return (%)',margin=dict(l=10,r=10,t=50,b=20),legend=dict(orientation='h'))
     st.plotly_chart(daily,use_container_width=True)
     left,right = st.columns([1.2,1])
