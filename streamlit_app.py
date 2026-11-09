@@ -114,9 +114,16 @@ def dashboard():
         st.caption(f"SPX {spx['price']:,.2f} ({percent(spx['change'])}) · Quote timestamp {quote_time} · Yahoo Finance · Quote may be delayed")
     if not spx or result['curve'][-1]['spx'] is None:
         st.caption('SPX is blank where its opening close or a matching session value is unavailable.')
-    cards = st.columns(5)
-    for column,label,value in zip(cards,['Cumulative strategy return','Cumulative Nasdaq 100','Cumulative S&P 500','Excess vs NDX · pp','Strategy max drawdown'],[stats['cumulative'],stats['benchmark'],result['curve'][-1]['spx'],stats['excess'],stats['maxDrawdown']]):
-        column.metric(label,percent(value, ' pp' if label.endswith('pp') else '%'))
+    latest_point = result['curve'][-1]
+    metrics = [
+        ('Cumulative strategy return', percent(stats['cumulative'])),
+        ('Cumulative Nasdaq 100', percent(stats['benchmark'])),
+        ('Cumulative S&P 500', percent(latest_point['spx'])),
+        ('Excess vs NDX · pp', percent(stats['excess'], ' pp')),
+        ('Excess vs SPX · pp', percent(latest_point['excessSpx'], ' pp')),
+    ]
+    for column, (label, value) in zip(st.columns(len(metrics)), metrics):
+        column.metric(label, value)
     st.plotly_chart(figure('Cumulative Returns',result['curve'],[('strategy','Strategy TWR',LIME),('ndx','Nasdaq 100',BLUE),('spx','S&P 500 (SPX)',AMBER)]),use_container_width=True)
     st.caption(f"Official TWR confirmed through {payload.get('officialThrough','—')}. All series use the same opening date. SPX uses daily closes and pairs an intraday quote with a strategy estimate only when the timestamps are within five minutes. {result['estimatedDays']} strategy sessions are provisional. Dashed estimates can be hidden.")
     a,b = st.columns(2)
