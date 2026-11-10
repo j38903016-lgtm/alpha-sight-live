@@ -5,7 +5,7 @@ import requests
 import streamlit as st
 
 from performance import calculate
-from spx import add_spx_comparison, load_spx
+from spx import SpxCloseCache, add_spx_comparison, load_spx, spx_summary_point
 
 PUBLIC_DATA_URL = 'https://alpha-sight-live-1023.j38903016.chatgpt.site/api/public-performance'
 LIME, BLUE, TEAL, AMBER = '#C8FF70', '#7DACF7', '#43D9C4', '#FFB86B'
@@ -28,6 +28,11 @@ def load_data():
 
 
 cached_spx = st.cache_data(ttl=45, show_spinner=False)(load_spx)
+
+
+@st.cache_resource
+def spx_close_cache():
+    return SpxCloseCache()
 
 
 def percent(value, suffix='%'):
@@ -101,7 +106,7 @@ def dashboard():
     if not result:
         st.info('No matching strategy and index returns are available for this period.')
         return
-    spx = cached_spx(payload['points'][0]['date'])
+    spx = spx_close_cache().resolve(cached_spx(payload['points'][0]['date']))
     add_spx_comparison(result, spx)
     stats = result['stats']
     st.caption(f"Period: {result['from']} → {result['through']} · {result['observations']} daily returns · Opening baseline: {result['baseline']} close · Earlier small-capital activity excluded")
@@ -112,20 +117,26 @@ def dashboard():
     if spx and spx['price'] is not None:
         quote_time = spx['observed'].strftime('%Y-%m-%d %H:%M:%S ET')
         st.caption(f"SPX {spx['price']:,.2f} ({percent(spx['change'])}) · Quote timestamp {quote_time} · Yahoo Finance · Quote may be delayed")
-    if not spx or result['curve'][-1]['spx'] is None:
-        st.caption('SPX is blank where its opening close or a matching session value is unavailable.')
     latest_point = result['curve'][-1]
+    spx_point = spx_summary_point(result['curve'])
+    if spx and spx['history_only']:
+        st.caption('SPX 报价暂未更新，已完成的历史收盘继续显示。')
+    if latest_point['spx'] is None:
+        if spx_point:
+            st.caption(f"SPX 暂无 {latest_point['date']} 的匹配数据。SPX 累计收益及超额收益截至 {spx_point['date']} 收盘。")
+        else:
+            st.caption('所选区间暂无可核对的 SPX 收益。')
     metrics = [
         ('Cumulative strategy return', percent(stats['cumulative'])),
         ('Cumulative Nasdaq 100', percent(stats['benchmark'])),
-        ('Cumulative S&P 500', percent(latest_point['spx'])),
+        ('Cumulative S&P 500', percent(spx_point['spx'] if spx_point else None)),
         ('Excess vs NDX · pp', percent(stats['excess'], ' pp')),
-        ('Excess vs SPX · pp', percent(latest_point['excessSpx'], ' pp')),
+        ('Excess vs SPX · pp', percent(spx_point['excessSpx'] if spx_point else None, ' pp')),
     ]
     for column, (label, value) in zip(st.columns(len(metrics)), metrics):
         column.metric(label, value)
     st.plotly_chart(figure('Cumulative Returns',result['curve'],[('strategy','Strategy TWR',LIME),('ndx','Nasdaq 100',BLUE),('spx','S&P 500 (SPX)',AMBER)]),use_container_width=True)
-    st.caption(f"Official TWR confirmed through {payload.get('officialThrough','—')}. All series use the same opening date. SPX uses daily closes and pairs an intraday quote with a strategy estimate only when the timestamps are within five minutes. {result['estimatedDays']} strategy sessions are provisional. Dashed estimates can be hidden.")
+    st.caption(f"Official TWR confirmed through {payload.get('officialThrough','—')}. All series use the same opening date. SPX pairs intraday values within five minutes and keeps the last confirmed summary when today's comparison is unavailable. {result['estimatedDays']} strategy sessions are provisional. Dashed estimates can be hidden.")
     a,b = st.columns(2)
     with a:
         st.plotly_chart(figure('Cumulative Excess Return',result['curve'],[('excess','Strategy − NDX',TEAL),('excessSpx','Strategy − SPX',AMBER)],'Percentage points'),use_container_width=True)

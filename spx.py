@@ -1,6 +1,7 @@
 """S&P 500 price-index data and date-aligned comparisons."""
 from datetime import datetime
 from math import isfinite
+from threading import Lock
 from zoneinfo import ZoneInfo
 
 import requests
@@ -8,6 +9,26 @@ import requests
 
 EASTERN = ZoneInfo('America/New_York')
 QUOTE_ALIGNMENT_SECONDS = 300
+
+
+class SpxCloseCache:
+    """Keep the completed closes when a refresh loses the upstream connection."""
+
+    def __init__(self):
+        self._lock = Lock()
+        self._closes = {}
+
+    def resolve(self, fresh):
+        with self._lock:
+            if fresh:
+                self._closes.update(fresh['closes'])
+            if not self._closes:
+                return None
+            return {
+                **(fresh or {'price': None, 'intraday': False}),
+                'closes': dict(self._closes),
+                'history_only': fresh is None,
+            }
 
 
 def _market_time(timestamp):
@@ -100,3 +121,12 @@ def add_spx_comparison(result, spx):
     anchor = result['curve'][0]
     for field in ('spx', 'excessSpx', 'drawdownSpx'):
         anchor[field] = 0.0 if baseline else None
+
+
+def spx_summary_point(curve):
+    """Use the current matched point or the last jointly confirmed session."""
+    sessions = curve[1:]
+    if sessions and sessions[-1]['spx'] is not None:
+        return sessions[-1]
+    return next((row for row in reversed(sessions)
+                 if not row['estimated'] and row['spx'] is not None), None)
