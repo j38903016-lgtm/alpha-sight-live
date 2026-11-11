@@ -6,7 +6,7 @@ import streamlit as st
 
 from performance import calculate
 from freshness import series_freshness
-from spx import SpxCloseCache, add_spx_comparison, load_spx, spx_summary_point
+from spx import SpxCloseCache, add_spx_comparison, load_spx, spx_summary_point, batch_spx
 
 PUBLIC_DATA_URL = 'https://alpha-sight-live-1023.j38903016.chatgpt.site/api/public-performance'
 LIME, BLUE, TEAL, AMBER = '#C8FF70', '#7DACF7', '#43D9C4', '#FFB86B'
@@ -107,7 +107,7 @@ def dashboard():
     if not result:
         st.info('No matching strategy and index returns are available for this period.')
         return
-    spx = spx_close_cache().resolve(cached_spx(payload['points'][0]['date']))
+    spx = batch_spx(payload, spx_close_cache().resolve(cached_spx(payload['points'][0]['date'])))
     add_spx_comparison(result, spx)
     stats = result['stats']
     st.caption(f"Period: {result['from']} → {result['through']} · {result['observations']} daily returns · Opening baseline: {result['baseline']} close · Earlier small-capital activity excluded")
@@ -117,14 +117,17 @@ def dashboard():
     st.caption(f"最新交易日 {latest_day['date']}（{day_quality}）：策略 {percent(latest_day['strategy']*100)} · NDX {percent(latest_day['ndx']*100)} · SPX {percent(spx_daily*100 if spx_daily is not None else None)}。")
     if spx and spx['price'] is not None:
         quote_time = spx['observed'].strftime('%Y-%m-%d %H:%M:%S ET')
-        st.caption(f"SPX {spx['price']:,.2f} ({percent(spx['change'])}) · Quote timestamp {quote_time} · Yahoo Finance · Quote may be delayed")
+        if spx.get('batch_id'):
+            st.caption(f"同批采集：账户 × NDX × SPX · {quote_time} · TradingView watchlist；采集时间不代表交易所行情时间")
+        else:
+            st.caption(f"SPX {spx['price']:,.2f} ({percent(spx['change'])}) · Quote timestamp {quote_time} · Yahoo Finance · Quote may be delayed")
     latest_point = result['curve'][-1]
     spx_point = spx_summary_point(result['curve'])
     freshness_rows, stale_upload = series_freshness(payload, spx, spx_point)
     if stale_upload:
         st.warning('账户数据已超过3分钟没有成功更新。策略与NDX显示最后有效值，不能当作当前行情；系统恢复后自动续传。')
     st.dataframe(pd.DataFrame(freshness_rows), hide_index=True, use_container_width=True)
-    st.caption('三条曲线的采集时间与行情时间分别列示。NDX参考源可能延迟15分钟，未提供交易所时间时明确显示“未提供”；过期数据不会标成实时。')
+    st.caption('同批采集会一起更新三个对象；行情仍各有延迟，采集时间不是成交时间。缺少完整同批数据时保留上一有效批次，断线恢复后由后台自动续传。')
     if spx and spx['history_only']:
         st.caption('SPX 报价暂未更新，已完成的历史收盘继续显示。')
     if latest_point['spx'] is None:
@@ -142,7 +145,7 @@ def dashboard():
     for column, (label, value) in zip(st.columns(len(metrics)), metrics):
         column.metric(label, value)
     st.plotly_chart(figure('Cumulative Returns',result['curve'],[('strategy','Strategy TWR',LIME),('ndx','Nasdaq 100',BLUE),('spx','S&P 500 (SPX)',AMBER)]),use_container_width=True)
-    st.caption(f"Official TWR confirmed through {payload.get('officialThrough','—')}. All series use the same opening date. SPX pairs intraday values within five minutes and keeps the last confirmed summary when today's comparison is unavailable. {result['estimatedDays']} strategy sessions are provisional. Dashed estimates can be hidden.")
+    st.caption(f"Official TWR confirmed through {payload.get('officialThrough','—')}. All series use the same opening date. Current synchronized points share one collection batch; exchange delays can differ. {result['estimatedDays']} strategy sessions are provisional. Dashed estimates can be hidden.")
     a,b = st.columns(2)
     with a:
         st.plotly_chart(figure('Cumulative Excess Return',result['curve'],[('excess','Strategy − NDX',TEAL),('excessSpx','Strategy − SPX',AMBER)],'Percentage points'),use_container_width=True)

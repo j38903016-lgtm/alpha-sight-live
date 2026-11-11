@@ -103,9 +103,10 @@ def add_spx_comparison(result, spx):
             if spx and spx['intraday'] and row.get('observedAt'):
                 strategy_time = datetime.fromisoformat(row['observedAt'])
                 quote_time = spx['observed']
+                same_batch = bool(row.get('batchId') and row.get('batchId') == spx.get('batch_id'))
                 if (strategy_time.tzinfo is not None
                         and quote_time.date().isoformat() == row['date']
-                        and abs((strategy_time - quote_time).total_seconds()) <= QUOTE_ALIGNMENT_SECONDS):
+                        and (same_batch or (not row.get('batchId') and abs((strategy_time - quote_time).total_seconds()) <= QUOTE_ALIGNMENT_SECONDS))):
                     close = spx['price']
 
         row['spxEstimated'] = is_intraday_estimate and close is not None
@@ -130,3 +131,21 @@ def spx_summary_point(curve):
         return sessions[-1]
     return next((row for row in reversed(sessions)
                  if not row['estimated'] and row['spx'] is not None), None)
+
+
+def batch_spx(payload, history):
+    """Use Yahoo only for completed historical closes; live SPX comes with NAV/NDX."""
+    batch = payload.get('synchronizedBatch')
+    if not batch:
+        return history
+    point = payload['points'][-1]
+    if not point.get('batchId') or point['batchId'] != batch.get('id') or point.get('observedAt') != batch.get('observedAt'):
+        return {'closes':(history or {}).get('closes',{}),'price':None,'intraday':False,'history_only':True}
+    quote = batch.get('quotes',{}).get('SP:SPX',{})
+    if not _positive(quote.get('price')):
+        return {'closes':(history or {}).get('closes',{}),'price':None,'intraday':False,'history_only':True}
+    observed = datetime.fromisoformat(batch['observedAt'].replace('Z','+00:00')).astimezone(EASTERN)
+    return {'closes':(history or {}).get('closes',{}),'price':quote['price'],'observed':observed,
+            'intraday':point.get('estimateSession')=='intraday','change':quote.get('change'),
+            'history_only':False,'batch_id':batch['id'],'source':'TradingView watchlist',
+            'delay_seconds':quote.get('delaySeconds'),'exchange_at':quote.get('exchangeAt')}

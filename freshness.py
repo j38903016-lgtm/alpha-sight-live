@@ -44,12 +44,22 @@ def series_freshness(payload, spx, matched_spx, now=None):
     matched = matched_spx and matched_spx["date"] == latest["date"]
     spx_status = ("仅前收；当前未对齐" if not matched else "报价已过期" if live_estimate and spx_age is not None and spx_age > 300
                   else "盘中估算" if live_estimate else "正式收盘")
-    return [
+    rows = [
         {"对象": "策略", "曲线截至": latest["date"], "采集时间": display_time(observed or upload_time),
          "行情时间": "账户快照", "状态": strategy_status},
         {"对象": "纳指100", "曲线截至": latest["date"], "采集时间": display_time(ndx_observed),
          "行情时间": display_time(benchmark.get("exchangeAt")), "状态": ndx_status},
         {"对象": "标普500", "曲线截至": matched_spx["date"] if matched_spx else "暂无匹配",
          "采集时间": "页面每分钟查询", "行情时间": display_time(spx_time), "状态": spx_status},
-    ], stale
+    ]
+    batch = payload.get('synchronizedBatch')
+    if batch and latest.get('batchId') == batch.get('id'):
+        for row,symbol in zip(rows[1:],('NASDAQ:NDX','SP:SPX')):
+            quote = batch.get('quotes',{}).get(symbol,{})
+            delay = quote.get('delaySeconds')
+            row['采集时间'] = display_time(batch.get('observedAt'))
+            row['行情时间'] = display_time(quote.get('exchangeAt'))
+            row['状态'] = '采集已过期' if stale else f'同批采集；延迟约{delay//60}分钟' if isinstance(delay,int) else '同批采集；行情时间未核实'
+        rows[0]['状态'] = '采集已过期' if stale else '同批采集；账户估算'
+    return rows, stale
 
