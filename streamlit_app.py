@@ -5,6 +5,7 @@ import requests
 import streamlit as st
 
 from performance import calculate
+from freshness import series_freshness
 from spx import SpxCloseCache, add_spx_comparison, load_spx, spx_summary_point
 
 PUBLIC_DATA_URL = 'https://alpha-sight-live-1023.j38903016.chatgpt.site/api/public-performance'
@@ -119,6 +120,11 @@ def dashboard():
         st.caption(f"SPX {spx['price']:,.2f} ({percent(spx['change'])}) · Quote timestamp {quote_time} · Yahoo Finance · Quote may be delayed")
     latest_point = result['curve'][-1]
     spx_point = spx_summary_point(result['curve'])
+    freshness_rows, stale_upload = series_freshness(payload, spx, spx_point)
+    if stale_upload:
+        st.warning('账户数据已超过3分钟没有成功更新。策略与NDX显示最后有效值，不能当作当前行情；系统恢复后自动续传。')
+    st.dataframe(pd.DataFrame(freshness_rows), hide_index=True, use_container_width=True)
+    st.caption('三条曲线的采集时间与行情时间分别列示。NDX参考源可能延迟15分钟，未提供交易所时间时明确显示“未提供”；过期数据不会标成实时。')
     if spx and spx['history_only']:
         st.caption('SPX 报价暂未更新，已完成的历史收盘继续显示。')
     if latest_point['spx'] is None:
